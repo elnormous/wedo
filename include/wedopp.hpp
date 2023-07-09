@@ -190,7 +190,7 @@ namespace wedopp
         class Processor final
         {
         public:
-            Processor(File f): file{std::move(f)} {}
+            Processor(File f) noexcept: file{std::move(f)}{}
 
             std::pair<std::uint8_t, std::uint8_t> readDeviceTypes()
             {
@@ -200,11 +200,17 @@ namespace wedopp
                 return {readBuffer[4], readBuffer[6]};
             }
 
-            void setValue(std::uint8_t slot, std::uint8_t value)
+            void writeValue(std::uint8_t slot, std::uint8_t value)
             {
                 writeBuffer[1U] = 64U;
                 writeBuffer[2U + slot] = value;
                 file.write(writeBuffer);
+            }
+
+            std::uint8_t readValue(std::uint8_t slot)
+            {
+                file.read(readBuffer);
+                return readBuffer[3U + slot * 2U];
             }
 
         private:
@@ -236,13 +242,18 @@ namespace wedopp
 
         void setValue(std::uint8_t value) const
         {
-            processor->setValue(slot, value);
+            processor->writeValue(slot, value);
+        }
+
+        std::uint8_t getValue() const
+        {
+            return processor->readValue(slot);
         }
         
     private:
-        Type type;
+        Type type = Type::none;
         std::uint8_t slot = 0;
-        detail::Processor* processor;
+        detail::Processor* processor = nullptr;
     };
 
     class Hub final

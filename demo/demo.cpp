@@ -35,10 +35,7 @@ int main()
                 const auto& devices = hub.getDevices();
 
                 for (const auto& device : devices)
-                {
                     std::cout << "  Device " << typeToString(device.getType()) << '\n';
-                    device.setValue(0);
-                }
             }
         }
         else
