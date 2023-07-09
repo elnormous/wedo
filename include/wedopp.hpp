@@ -1,6 +1,7 @@
 #ifndef WEDOPP_HPP
 #define WEDOPP_HPP
 
+#include <array>
 #include <memory>
 #include <system_error>
 #include <vector>
@@ -98,6 +99,23 @@ namespace wedopp
 
             [[nodiscard]] auto get() const noexcept { return handle; }
 
+            template <std::size_t n>
+            void write(const std::array<std::uint8_t, n>& data) const
+            {
+                if (!WriteFile(handle, data.data(), static_cast<DWORD>(data.size()), nullptr, nullptr))
+                    throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to write to file"};
+
+                if (!FlushFileBuffers(handle))
+                    throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to flush file buffer"};
+            }
+
+            template <std::size_t n>
+            void read(std::array<std::uint8_t, n>& data) const
+            {
+                if (!ReadFile(handle, data.data(), static_cast<DWORD>(data.size()), nullptr, nullptr))
+                    throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to read from file"};
+            }
+
         private:
             HANDLE handle = INVALID_HANDLE_VALUE;
         };
@@ -176,6 +194,22 @@ namespace wedopp
     class Device final
     {
     public:
+        enum Type
+        {
+            none,
+            motor,
+            servoMotor,
+            light,
+            distanceSensor,
+            tiltSensor
+        };
+
+        Device(Type t) noexcept: type{t} {}
+
+        [[nodiscard]] auto getType() const noexcept { return type; }
+
+    private:
+        Type type;
     };
 
     class Hub final
@@ -185,12 +219,61 @@ namespace wedopp
 
         [[nodiscard]] const auto& getPath() const noexcept { return path; }
 
+        [[nodiscard]] const auto getDevices() const
+        {
+            std::vector<Device> devices;
+
+            std::array<std::uint8_t, 9> buffer{};
+            file.read(buffer);
+
+            for (const auto c : buffer)
+                std::cout << ' ' << static_cast<std::uint32_t>(c);
+            std::cout << '\n';
+
+            devices.push_back(Device{getDeviceType(buffer[4])});
+            devices.push_back(Device{getDeviceType(buffer[6])});
+
+            return devices;
+        }
+
     private:
+        static Device::Type getDeviceType(std::uint8_t b)
+        {
+            std::cout << static_cast<uint32_t>(b) << '\n';
+
+            switch (b)
+            {
+                case 39U:
+                    return Device::Type::tiltSensor;
+
+                case 102U:
+                case 103U:
+                    return Device::Type::servoMotor;
+
+                case 177U:
+                case 178U:
+                case 179U:
+                    return Device::Type::distanceSensor;
+
+                case 202U:
+                case 203U:
+                case 204U:
+                    return Device::Type::light;
+
+                case 239U:
+                case 240U:
+                case 241U:
+                    return Device::Type::motor;
+
+                default: return Device::Type::none;
+            }
+        }
+
         std::string path;
         detail::File file;
     };
 
-    std::vector<Hub> findHubs()
+    [[nodiscard]] std::vector<Hub> findHubs()
     {
         std::vector<Hub> hubs;
 
