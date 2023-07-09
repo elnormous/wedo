@@ -289,6 +289,7 @@ namespace wedopp
                 case 177U:
                 case 178U:
                 case 179U:
+                case 180U:
                     return Device::Type::distanceSensor;
                     
                 case 202U:

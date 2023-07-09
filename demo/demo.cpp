@@ -32,14 +32,37 @@ int main()
             {
                 std::cout << "Hub at " << hub.getPath() << '\n';
 
-                const auto& devices = hub.getDevices();
-
-                for (const auto& device : devices)
+                for (const auto& device : hub.getDevices())
                     std::cout << "  Device " << typeToString(device.getType()) << '\n';
+            }
+
+            for (;;)
+            {
+                bool enable = false;
+
+                for (const auto& hub : hubs)
+                    for (const auto& device : hub.getDevices())
+                        if ((device.getType() == wedopp::Device::Type::distanceSensor || device.getType() == wedopp::Device::Type::tiltSensor) &&
+                            device.getValue() <= 80U)
+                            enable = true;
+
+                for (const auto& hub : hubs)
+                    for (const auto& device : hub.getDevices())
+                        if (device.getType() == wedopp::Device::Type::motor ||
+                            device.getType() == wedopp::Device::Type::servoMotor ||
+                            device.getType() == wedopp::Device::Type::light)
+                            device.setValue(enable ? 127 : 0);
+
+#ifdef _WIN32
+                Sleep(10);
+#else
+                sleep(10);
+#endif
             }
         }
         else
             std::cout << "No WeDo hubs found\n";
+        
     }
     catch (const std::exception& e)
     {
