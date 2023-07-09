@@ -1,0 +1,4 @@
+﻿demo/Win32
+demo/x64
+*.user
+demo/.vs
