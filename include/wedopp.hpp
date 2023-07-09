@@ -234,7 +234,7 @@ namespace wedopp
         [[nodiscard]] auto getType() const noexcept { return type; }
         [[nodiscard]] auto getSlot() const noexcept { return slot; }
 
-        void setValue(std::uint8_t value)
+        void setValue(std::uint8_t value) const
         {
             processor->setValue(slot, value);
         }
@@ -258,7 +258,7 @@ namespace wedopp
 
         [[nodiscard]] const auto& getPath() const noexcept { return path; }
 
-        [[nodiscard]] auto getDevices() const noexcept { return devices; }
+        [[nodiscard]] const auto& getDevices() const noexcept { return devices; }
 
     private:
         static Device::Type getDeviceType(std::uint8_t b)

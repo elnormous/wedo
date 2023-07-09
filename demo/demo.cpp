@@ -32,9 +32,9 @@ int main()
             {
                 std::cout << "Hub at " << hub.getPath() << '\n';
 
-                auto devices = hub.getDevices();
+                const auto& devices = hub.getDevices();
 
-                for (auto& device : devices)
+                for (const auto& device : devices)
                 {
                     std::cout << "  Device " << typeToString(device.getType()) << '\n';
                     device.setValue(0);
