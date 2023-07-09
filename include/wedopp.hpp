@@ -19,6 +19,8 @@
 #  include <SetupAPI.h>
 #  pragma pop_macro("WIN32_LEAN_AND_MEAN")
 #  pragma pop_macro("NOMINMAX")
+#else
+#  include <fcntl.h>
 #endif
 
 namespace wedopp
@@ -189,15 +191,50 @@ namespace wedopp
         class File final
         {
         public:
+            File(const char* path): fd{open(path, O_RDWR)}
+            {
+                if (fd == -1)
+                    throw std::system_error{errno, std::system_category(), "Failed to open file"};
+            }
+
+            ~File()
+            {
+                if (fd != -1) close(fd);
+            }
+
+            File(File&& other) noexcept: fd{other.fd}
+            {
+                other.fd = -1;
+            }
+
+            File& operator=(File&& other) noexcept
+            {
+                if (this != &other)
+                {
+                    fd = other.fd;
+                    other.fd = -1;
+                }
+                return *this;
+            }
+
+            [[nodiscard]] auto get() const noexcept { return fd; }
+
             template <std::size_t n>
             void write(const std::array<std::uint8_t, n>& data) const
             {
+                if (::write(fd, data.data(), data.size()) == -1)
+                    throw std::system_error{errno, std::system_category(), "Failed to write to file"};
             }
 
             template <std::size_t n>
             void read(std::array<std::uint8_t, n>& data) const
             {
+                if (::read(fd, data.data(), data.size()) == -1)
+                    throw std::system_error{errno, std::system_category(), "Failed to read from file"};
             }
+
+        private:
+            int fd = -1;
         };
 #endif
 
