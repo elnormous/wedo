@@ -2,3 +2,6 @@
 demo/x64
 *.user
 demo/.vs
+*.d
+*.o
+demo/demo

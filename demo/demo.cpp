@@ -1,4 +1,8 @@
 #include <iostream>
+#ifdef _WIN32
+#else
+#  include <unistd.h>
+#endif
 #include "wedopp.hpp"
 
 namespace

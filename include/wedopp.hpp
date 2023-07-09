@@ -185,6 +185,20 @@ namespace wedopp
             const GUID* classGuid = nullptr;
             HDEVINFO handle = INVALID_HANDLE_VALUE;
         };
+#else
+        class File final
+        {
+        public:
+            template <std::size_t n>
+            void write(const std::array<std::uint8_t, n>& data) const
+            {
+            }
+
+            template <std::size_t n>
+            void read(std::array<std::uint8_t, n>& data) const
+            {
+            }
+        };
 #endif
 
         class Processor final
@@ -319,11 +333,11 @@ namespace wedopp
     {
         std::vector<Hub> hubs;
 
+#ifdef _WIN32
         GUID hidGuid;
         HidD_GetHidGuid(&hidGuid);
         detail::DevInfo devInfo{&hidGuid, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE | DIGCF_ALLCLASSES};
 
-#ifdef _WIN32
         const auto interfaces = devInfo.enumInterfaces();
         for (const auto& interface : interfaces)
         {
