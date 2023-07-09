@@ -241,14 +241,18 @@ namespace wedopp
         class Processor final
         {
         public:
-            Processor(File f) noexcept: file{std::move(f)}{}
+            Processor(File f) noexcept: file{std::move(f)} {}
 
-            std::pair<std::uint8_t, std::uint8_t> readDeviceTypes()
+            std::uint8_t readType(std::uint8_t slot)
             {
-                file.write(writeBuffer);
                 file.read(readBuffer);
+                return readBuffer[4U + slot * 2U];
+            }
 
-                return {readBuffer[4], readBuffer[6]};
+            std::uint8_t readValue(std::uint8_t slot)
+            {
+                file.read(readBuffer);
+                return readBuffer[3U + slot * 2U];
             }
 
             void writeValue(std::uint8_t slot, std::uint8_t value)
@@ -256,12 +260,6 @@ namespace wedopp
                 writeBuffer[1U] = 64U;
                 writeBuffer[2U + slot] = value;
                 file.write(writeBuffer);
-            }
-
-            std::uint8_t readValue(std::uint8_t slot)
-            {
-                file.read(readBuffer);
-                return readBuffer[3U + slot * 2U];
             }
 
         private:
@@ -284,25 +282,68 @@ namespace wedopp
             tiltSensor
         };
 
-        Device(const Type t, const std::uint8_t s, detail::Processor* p) noexcept:
-            type{t}, slot{s}, processor{p}
+        Device(const std::uint8_t s, detail::Processor* p) noexcept:
+            slot{s}, processor{p}
         {}
 
-        [[nodiscard]] auto getType() const noexcept { return type; }
+        [[nodiscard]] auto getType() const
+        {
+            return getDeviceType(processor->readType(slot));
+        }
+
         [[nodiscard]] auto getSlot() const noexcept { return slot; }
+        
+        std::uint8_t getValue() const
+        {
+            return processor->readValue(slot);
+        }
 
         void setValue(std::uint8_t value) const
         {
             processor->writeValue(slot, value);
         }
-
-        std::uint8_t getValue() const
-        {
-            return processor->readValue(slot);
-        }
         
     private:
-        Type type = Type::none;
+        static Device::Type getDeviceType(std::uint8_t b)
+        {
+            switch (b)
+            {
+            case 38U:
+            case 39U:
+                return Device::Type::tiltSensor;
+
+            case 102U:
+            case 103U:
+                return Device::Type::servoMotor;
+
+            case 177U:
+            case 178U:
+            case 179U:
+            case 180U:
+                return Device::Type::distanceSensor;
+
+            case 202U:
+            case 203U:
+            case 204U:
+            case 205U:
+                return Device::Type::light;
+
+            case 231U:
+                return Device::Type::none;
+
+            case 0U:
+            case 1U:
+            case 2U:
+            case 3U:
+            case 239U:
+            case 240U:
+            case 241U:
+                return Device::Type::motor;
+
+            default: return Device::Type::none;
+            }
+        }
+
         std::uint8_t slot = 0;
         detail::Processor* processor = nullptr;
     };
@@ -312,10 +353,8 @@ namespace wedopp
     public:
         Hub(std::string p, detail::File f): path{std::move(p)}, processor{new detail::Processor(std::move(f))}
         {
-            const auto deviceTypes = processor->readDeviceTypes();
-
-            devices.push_back(Device{getDeviceType(deviceTypes.first), 0U, processor.get()});
-            devices.push_back(Device{getDeviceType(deviceTypes.second), 1U, processor.get()});
+            devices.push_back(Device{0U, processor.get()});
+            devices.push_back(Device{1U, processor.get()});
         }
 
         [[nodiscard]] const auto& getPath() const noexcept { return path; }
@@ -323,44 +362,6 @@ namespace wedopp
         [[nodiscard]] const auto& getDevices() const noexcept { return devices; }
 
     private:
-        static Device::Type getDeviceType(std::uint8_t b)
-        {
-            std::cout << static_cast<uint32_t>(b) << '\n';
-
-            switch (b)
-            {
-                case 38U:
-                case 39U:
-                    return Device::Type::tiltSensor;
-
-                case 102U:
-                case 103U:
-                    return Device::Type::servoMotor;
-
-                case 177U:
-                case 178U:
-                case 179U:
-                case 180U:
-                    return Device::Type::distanceSensor;
-                    
-                case 202U:
-                case 203U:
-                case 204U:
-                case 205U:
-                    return Device::Type::light;
-
-                case 231U:
-                    return Device::Type::none;
-
-                case 239U:
-                case 240U:
-                case 241U:
-                    return Device::Type::motor;
-
-                default: return Device::Type::none;
-            }
-        }
-
         std::string path;
         std::vector<Device> devices;
         std::unique_ptr<detail::Processor> processor;
