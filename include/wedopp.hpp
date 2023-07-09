@@ -104,9 +104,6 @@ namespace wedopp
             {
                 if (!WriteFile(handle, data.data(), static_cast<DWORD>(data.size()), nullptr, nullptr))
                     throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to write to file"};
-
-                if (!FlushFileBuffers(handle))
-                    throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to flush file buffer"};
             }
 
             template <std::size_t n>
@@ -189,12 +186,38 @@ namespace wedopp
             HDEVINFO handle = INVALID_HANDLE_VALUE;
         };
 #endif
+
+        class Processor final
+        {
+        public:
+            Processor(File f): file{std::move(f)} {}
+
+            std::pair<std::uint8_t, std::uint8_t> readDeviceTypes()
+            {
+                file.write(writeBuffer);
+                file.read(readBuffer);
+
+                return {readBuffer[4], readBuffer[6]};
+            }
+
+            void setValue(std::uint8_t slot, std::uint8_t value)
+            {
+                writeBuffer[1U] = 64U;
+                writeBuffer[2U + slot] = value;
+                file.write(writeBuffer);
+            }
+
+        private:
+            detail::File file;
+            std::array<std::uint8_t, 9> readBuffer{};
+            std::array<std::uint8_t, 9> writeBuffer{};
+        };
     }
 
     class Device final
     {
     public:
-        enum Type
+        enum class Type: std::uint8_t
         {
             none,
             motor,
@@ -204,37 +227,38 @@ namespace wedopp
             tiltSensor
         };
 
-        Device(Type t) noexcept: type{t} {}
+        Device(const Type t, const std::uint8_t s, detail::Processor* p) noexcept:
+            type{t}, slot{s}, processor{p}
+        {}
 
         [[nodiscard]] auto getType() const noexcept { return type; }
+        [[nodiscard]] auto getSlot() const noexcept { return slot; }
 
+        void setValue(std::uint8_t value)
+        {
+            processor->setValue(slot, value);
+        }
+        
     private:
         Type type;
+        std::uint8_t slot = 0;
+        detail::Processor* processor;
     };
 
     class Hub final
     {
     public:
-        Hub(std::string p, detail::File f): path{std::move(p)}, file{std::move(f)} {}
+        Hub(std::string p, detail::File f): path{std::move(p)}, processor{new detail::Processor(std::move(f))}
+        {
+            const auto deviceTypes = processor->readDeviceTypes();
+
+            devices.push_back(Device{getDeviceType(deviceTypes.first), 0U, processor.get()});
+            devices.push_back(Device{getDeviceType(deviceTypes.second), 1U, processor.get()});
+        }
 
         [[nodiscard]] const auto& getPath() const noexcept { return path; }
 
-        [[nodiscard]] const auto getDevices() const
-        {
-            std::vector<Device> devices;
-
-            std::array<std::uint8_t, 9> buffer{};
-            file.read(buffer);
-
-            for (const auto c : buffer)
-                std::cout << ' ' << static_cast<std::uint32_t>(c);
-            std::cout << '\n';
-
-            devices.push_back(Device{getDeviceType(buffer[4])});
-            devices.push_back(Device{getDeviceType(buffer[6])});
-
-            return devices;
-        }
+        [[nodiscard]] auto getDevices() const noexcept { return devices; }
 
     private:
         static Device::Type getDeviceType(std::uint8_t b)
@@ -243,6 +267,7 @@ namespace wedopp
 
             switch (b)
             {
+                case 38U:
                 case 39U:
                     return Device::Type::tiltSensor;
 
@@ -254,11 +279,15 @@ namespace wedopp
                 case 178U:
                 case 179U:
                     return Device::Type::distanceSensor;
-
+                    
                 case 202U:
                 case 203U:
                 case 204U:
+                case 205U:
                     return Device::Type::light;
+
+                case 231U:
+                    return Device::Type::none;
 
                 case 239U:
                 case 240U:
@@ -270,7 +299,8 @@ namespace wedopp
         }
 
         std::string path;
-        detail::File file;
+        std::vector<Device> devices;
+        std::unique_ptr<detail::Processor> processor;
     };
 
     [[nodiscard]] std::vector<Hub> findHubs()
