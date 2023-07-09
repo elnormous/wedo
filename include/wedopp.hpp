@@ -29,12 +29,12 @@ namespace wedopp
         {
         public:
             InterfaceDetailData(const std::size_t size):
-                data{static_cast<_SP_DEVICE_INTERFACE_DETAIL_DATA_A*>(std::malloc(size))}
+                data{static_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_A*>(std::malloc(size))}
             {
                 if (!data)
                     throw std::bad_alloc{};
 
-                data->cbSize = sizeof(_SP_DEVICE_INTERFACE_DETAIL_DATA_A);
+                data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
             }
 
             ~InterfaceDetailData()
@@ -63,7 +63,7 @@ namespace wedopp
             auto operator->() noexcept { return data; }
 
         private:
-            _SP_DEVICE_INTERFACE_DETAIL_DATA_A* data = nullptr;
+            SP_DEVICE_INTERFACE_DETAIL_DATA_A* data = nullptr;
         };
 
         class File final
@@ -167,7 +167,7 @@ namespace wedopp
             }
 
         private:
-            const GUID* classGuid;
+            const GUID* classGuid = nullptr;
             HDEVINFO handle = INVALID_HANDLE_VALUE;
         };
 #endif
