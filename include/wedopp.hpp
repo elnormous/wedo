@@ -20,7 +20,11 @@
 #  pragma pop_macro("WIN32_LEAN_AND_MEAN")
 #  pragma pop_macro("NOMINMAX")
 #else
+#  include <cstring>
+#  include <dirent.h>
 #  include <fcntl.h>
+#  include <linux/hiddev.h>
+#  include <sys/ioctl.h>
 #endif
 
 namespace wedopp
@@ -191,7 +195,7 @@ namespace wedopp
         class File final
         {
         public:
-            File(const char* path): fd{open(path, O_RDWR)}
+            File(const char* path, int flags): fd{open(path, flags)}
             {
                 if (fd == -1)
                     throw std::system_error{errno, std::system_category(), "Failed to open file"};
@@ -369,6 +373,9 @@ namespace wedopp
 
     [[nodiscard]] std::vector<Hub> findHubs()
     {
+        constexpr std::int16_t vendorId = 0x0694;
+        constexpr std::int16_t productId = 0x0003;
+
         std::vector<Hub> hubs;
 
 #ifdef _WIN32
@@ -383,9 +390,6 @@ namespace wedopp
             {
                 detail::File file{interface->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, FILE_FLAG_WRITE_THROUGH};
 
-                constexpr std::int16_t productId = 0x0003;
-                constexpr std::int16_t vendorId = 0x0694;
-
                 HIDD_ATTRIBUTES attributes{};
                 attributes.Size = sizeof(attributes);
                 if (HidD_GetAttributes(file.get(), &attributes) &&
@@ -397,6 +401,33 @@ namespace wedopp
             }
         }
 #else
+        using CloseDirFunction = int(*)(DIR*);
+        std::unique_ptr<DIR, CloseDirFunction> dir(opendir("/dev/usb"), &closedir);
+        if (!dir)
+            throw std::system_error{errno, std::system_category(), "Failed to open directory"};
+
+        while (const dirent* ent = readdir(dir.get()))
+        {
+            if (std::strncmp("hid", ent->d_name, 3) == 0)
+            {
+                try
+                {
+                    std::string filename = std::string("/dev/usb/") + ent->d_name;
+                    detail::File file{filename.c_str(), O_RDWR};
+
+                    struct hiddev_devinfo devinfo;
+                    if (ioctl(file.get(), HIDIOCGDEVINFO, &devinfo) == -1)
+                        throw std::system_error{errno, std::system_category(), "Failed to get device info"};
+
+                    if (devinfo.vendor == vendorId && devinfo.product == productId)
+                        hubs.push_back(Hub{filename, std::move(file)});
+                }
+                catch (const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                }
+            }
+        }
 #endif
 
         return hubs;
