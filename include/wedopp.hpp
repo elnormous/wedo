@@ -333,7 +333,7 @@ namespace wedopp
                 constexpr std::int16_t productId = 0x0003;
                 constexpr std::int16_t vendorId = 0x0694;
 
-                HIDD_ATTRIBUTES attributes;
+                HIDD_ATTRIBUTES attributes{};
                 attributes.Size = sizeof(attributes);
                 if (HidD_GetAttributes(file.get(), &attributes) &&
                     attributes.VendorID == vendorId && attributes.ProductID == productId)
