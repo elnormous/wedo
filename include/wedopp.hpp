@@ -423,7 +423,13 @@ namespace wedopp
                         throw std::system_error{errno, std::system_category(), "Failed to get device info"};
 
                     if (devinfo.vendor == vendorId && devinfo.product == productId)
-                        hubs.push_back(Hub{"", filename, std::move(file)});
+                    {
+                        char deviceName[256];
+                        if (ioctl(file.get(), HIDIOCGNAME(sizeof(deviceName) - 1), deviceName) == -1)
+                            throw std::system_error{errno, std::system_category(), "Failed to get device name"};
+
+                        hubs.push_back(Hub{deviceName, filename, std::move(file)});
+                    }
                 }
                 catch (const std::exception& e)
                 {
