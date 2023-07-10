@@ -76,8 +76,8 @@ namespace wedopp
         class File final
         {
         public:
-            File(LPSTR filename, const DWORD desiredAccess, const DWORD shareMode, const DWORD creationDisposition, const DWORD flagsAndAttributes):
-                handle{CreateFileA(filename, desiredAccess, shareMode, nullptr, creationDisposition, flagsAndAttributes, nullptr)}
+            File(const std::string& filename, const DWORD desiredAccess, const DWORD shareMode, const DWORD creationDisposition, const DWORD flagsAndAttributes):
+                handle{CreateFileA(filename.c_str(), desiredAccess, shareMode, nullptr, creationDisposition, flagsAndAttributes, nullptr)}
             {
                 if (handle == INVALID_HANDLE_VALUE)
                     throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to open file"};
@@ -127,8 +127,7 @@ namespace wedopp
         {
         public:
             DevInfo(const GUID* guid, const DWORD flags):
-                classGuid{guid},
-                handle{SetupDiGetClassDevs(classGuid, nullptr, nullptr, flags)}
+                handle{SetupDiGetClassDevs(guid, nullptr, nullptr, flags)}
             {
                 if (handle == INVALID_HANDLE_VALUE)
                     throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to get devices"};
@@ -153,49 +152,17 @@ namespace wedopp
                 }
                 return *this;
             }
-
-            std::vector<InterfaceDetailData> enumInterfaces()
-            {
-                std::vector<InterfaceDetailData> interfaces;
-
-                for (DWORD index = 0;; ++index)
-                {
-                    SP_DEVICE_INTERFACE_DATA interfaceData{};
-                    interfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-
-                    if (!SetupDiEnumDeviceInterfaces(handle, nullptr, classGuid, index, &interfaceData))
-                    {
-                        if (const auto error = GetLastError(); error != ERROR_NO_MORE_ITEMS)
-                            throw std::system_error{static_cast<int>(error), std::system_category(), "Failed to enumerate device interfaces"};
-                        else
-                            break;
-                    }
-
-                    DWORD requiredLength = 0;
-                    if (!SetupDiGetDeviceInterfaceDetailA(handle, &interfaceData, nullptr, 0, &requiredLength, nullptr))
-                        if (const auto error = GetLastError(); error != ERROR_INSUFFICIENT_BUFFER)
-                            throw std::system_error{static_cast<int>(error), std::system_category(), "Failed to get interface detail"};
-
-                    InterfaceDetailData interfaceDetailData{requiredLength};
-
-                    if (!SetupDiGetDeviceInterfaceDetailA(handle, &interfaceData, interfaceDetailData.get(), requiredLength, &requiredLength, nullptr))
-                        throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to get interface detail"};
-
-                    interfaces.push_back(std::move(interfaceDetailData));
-                }
-
-                return interfaces;
-            }
+            
+            [[nodiscard]] auto get() const noexcept { return handle; }
 
         private:
-            const GUID* classGuid = nullptr;
             HDEVINFO handle = INVALID_HANDLE_VALUE;
         };
 #else
         class File final
         {
         public:
-            File(const char* path, int flags): fd{open(path, flags)}
+            File(const std::string& filename, int flags): fd{open(filename.c_str(), flags)}
             {
                 if (fd == -1)
                     throw std::system_error{errno, std::system_category(), "Failed to open file"};
@@ -383,18 +350,38 @@ namespace wedopp
         HidD_GetHidGuid(&hidGuid);
         detail::DevInfo devInfo{&hidGuid, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE | DIGCF_ALLCLASSES};
 
-        const auto interfaces = devInfo.enumInterfaces();
-        for (const auto& interface : interfaces)
+        for (DWORD index = 0;; ++index)
         {
+            SP_DEVICE_INTERFACE_DATA interfaceData{};
+            interfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+
+            if (!SetupDiEnumDeviceInterfaces(devInfo.get(), nullptr, &hidGuid, index, &interfaceData))
+            {
+                if (const auto error = GetLastError(); error != ERROR_NO_MORE_ITEMS)
+                    throw std::system_error{static_cast<int>(error), std::system_category(), "Failed to enumerate device interfaces"};
+                else
+                    break;
+            }
+
+            DWORD requiredLength = 0;
+            if (!SetupDiGetDeviceInterfaceDetailA(devInfo.get(), &interfaceData, nullptr, 0, &requiredLength, nullptr))
+                if (const auto error = GetLastError(); error != ERROR_INSUFFICIENT_BUFFER)
+                    throw std::system_error{static_cast<int>(error), std::system_category(), "Failed to get interface detail"};
+
+            detail::InterfaceDetailData interfaceDetailData{requiredLength};
+
+            if (!SetupDiGetDeviceInterfaceDetailA(devInfo.get(), &interfaceData, interfaceDetailData.get(), requiredLength, &requiredLength, nullptr))
+                throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to get interface detail"};
+
             try
             {
-                detail::File file{interface->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, FILE_FLAG_WRITE_THROUGH};
+                detail::File file{interfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, FILE_FLAG_WRITE_THROUGH};
 
                 HIDD_ATTRIBUTES attributes{};
                 attributes.Size = sizeof(attributes);
                 if (HidD_GetAttributes(file.get(), &attributes) &&
                     attributes.VendorID == vendorId && attributes.ProductID == productId)
-                    hubs.push_back(Hub{interface->DevicePath, std::move(file)});
+                    hubs.push_back(Hub{interfaceDetailData->DevicePath, std::move(file)});
             }
             catch (const std::system_error&)
             {
