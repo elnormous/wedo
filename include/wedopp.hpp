@@ -322,17 +322,19 @@ namespace wedopp
     class Hub final
     {
     public:
-        Hub(std::string p, detail::File f): path{std::move(p)}, processor{new detail::Processor(std::move(f))}
+        Hub(std::string n, std::string p, detail::File f):
+            name{std::move(n)}, path{std::move(p)}, processor{new detail::Processor(std::move(f))}
         {
             devices.push_back(Device{0U, processor.get()});
             devices.push_back(Device{1U, processor.get()});
         }
-
+        
+        [[nodiscard]] const auto& getName() const noexcept { return name; }
         [[nodiscard]] const auto& getPath() const noexcept { return path; }
-
         [[nodiscard]] const auto& getDevices() const noexcept { return devices; }
 
     private:
+        std::string name;
         std::string path;
         std::vector<Device> devices;
         std::unique_ptr<detail::Processor> processor;
@@ -372,16 +374,30 @@ namespace wedopp
 
             if (!SetupDiGetDeviceInterfaceDetailA(devInfo.get(), &interfaceData, interfaceDetailData.get(), requiredLength, &requiredLength, nullptr))
                 throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to get interface detail"};
-
+            
             try
             {
                 detail::File file{interfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING, FILE_FLAG_WRITE_THROUGH};
-
+                
                 HIDD_ATTRIBUTES attributes{};
                 attributes.Size = sizeof(attributes);
                 if (HidD_GetAttributes(file.get(), &attributes) &&
                     attributes.VendorID == vendorId && attributes.ProductID == productId)
-                    hubs.push_back(Hub{interfaceDetailData->DevicePath, std::move(file)});
+                {
+                    WCHAR deviceName[256];
+                    if (!HidD_GetProductString(file.get(), deviceName, sizeof(deviceName)))
+                        throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to get device name"};
+
+                    const auto byteCount = WideCharToMultiByte(CP_UTF8, 0, deviceName, -1, nullptr, 0, nullptr, nullptr);
+                    if (byteCount == 0)
+                        throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to convert wide char to UTF-8"};
+
+                    auto buffer = std::make_unique<char[]>(byteCount);
+                    if (WideCharToMultiByte(CP_UTF8, 0, deviceName, -1, buffer.get(), byteCount, nullptr, nullptr) == 0)
+                        throw std::system_error{static_cast<int>(GetLastError()), std::system_category(), "Failed to convert wide char to UTF-8"};
+
+                    hubs.push_back(Hub{buffer.get(), interfaceDetailData->DevicePath, std::move(file)});
+                }
             }
             catch (const std::system_error&)
             {
@@ -407,7 +423,7 @@ namespace wedopp
                         throw std::system_error{errno, std::system_category(), "Failed to get device info"};
 
                     if (devinfo.vendor == vendorId && devinfo.product == productId)
-                        hubs.push_back(Hub{filename, std::move(file)});
+                        hubs.push_back(Hub{"", filename, std::move(file)});
                 }
                 catch (const std::exception& e)
                 {

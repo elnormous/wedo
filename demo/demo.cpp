@@ -34,7 +34,7 @@ int main()
 
             for (const auto& hub : hubs)
             {
-                std::cout << "Hub at " << hub.getPath() << '\n';
+                std::cout << "Hub " << hub.getName() << " at " << hub.getPath() << '\n';
 
                 for (const auto& device : hub.getDevices())
                     std::cout << "  Device " << typeToString(device.getType()) << '\n';
